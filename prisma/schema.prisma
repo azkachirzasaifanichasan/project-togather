@@ -1,0 +1,226 @@
+// Togather — Prisma schema
+// Dev default: SQLite (no external service required).
+// Production path: switch `provider` to "postgresql" (PostgreSQL + PostGIS)
+// and enable the coordinate/enum types accordingly.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String             @id @default(cuid())
+  name          String
+  email         String             @unique
+  passwordHash  String
+  role          String             @default("user") // "user" | "superadmin"
+  city          String?
+  lat           Float?
+  lng           Float?
+  bio           String?
+  scheduleSlots String             @default("")
+  interests     UserInterest[]
+  memberships   Membership[]
+  registrations EventRegistration[]
+  places        Place[]
+  placeVotes    PlaceVote[]
+  reviews       Review[]
+  ownedCommunities Community[] @relation("CommunityOwner")
+  messages      ChatMessage[]
+  verificationRequests VerificationRequest[] @relation("VerificationRequester")
+  reviewedVerifications VerificationRequest[] @relation("VerificationReviewer")
+  connections   UserConnection[] @relation("ConnectionOwner")
+  connectedBy   UserConnection[] @relation("ConnectionTarget")
+  createdAt     DateTime           @default(now())
+}
+
+model Category {
+  id          String      @id @default(cuid())
+  name        String
+  slug        String      @unique
+  interests   Interest[]
+  communities Community[]
+}
+
+model Interest {
+  id                 String               @id @default(cuid())
+  name               String
+  categoryId         String
+  category           Category             @relation(fields: [categoryId], references: [id])
+  userInterests      UserInterest[]
+  communityInterests CommunityInterest[]
+
+  @@unique([categoryId, name])
+}
+
+model UserInterest {
+  userId     String
+  interestId String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  interest   Interest @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([userId, interestId])
+}
+
+model Community {
+  id            String              @id @default(cuid())
+  name          String
+  slug          String              @unique
+  description   String
+  categoryId    String
+  category      Category            @relation(fields: [categoryId], references: [id])
+  city          String
+  lat           Float?
+  lng           Float?
+  isOnline      Boolean             @default(false)
+  isVerified    Boolean             @default(false)
+  verifiedBy    String? // "team" | "owner"
+  ownerId       String?
+  owner         User?               @relation("CommunityOwner", fields: [ownerId], references: [id])
+  scheduleSlots String              @default("") // comma-separated slot slugs
+  joinLink      String?
+  website       String?
+  memberships   Membership[]
+  interests     CommunityInterest[]
+  events        Event[]
+  places        Place[]
+  reviews       Review[]
+  messages      ChatMessage[]
+  verificationRequests VerificationRequest[]
+  createdAt     DateTime            @default(now())
+}
+
+model CommunityInterest {
+  communityId String
+  interestId  String
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  interest    Interest  @relation(fields: [interestId], references: [id], onDelete: Cascade)
+
+  @@id([communityId, interestId])
+}
+
+model Membership {
+  id          String    @id @default(cuid())
+  userId      String
+  communityId String
+  role        String    @default("member") // "member" | "admin"
+  status      String    @default("active") // "active" | "requested"
+  joinedAt    DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+}
+
+model Event {
+  id            String              @id @default(cuid())
+  communityId   String
+  slug          String              @unique
+  title         String
+  description   String
+  venueName     String
+  lat           Float?
+  lng           Float?
+  startsAt      DateTime
+  endsAt        DateTime
+  capacity      Int?
+  isPublic      Boolean             @default(true)
+  community     Community           @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  registrations EventRegistration[]
+  createdAt     DateTime            @default(now())
+}
+
+model EventRegistration {
+  id           String   @id @default(cuid())
+  eventId      String
+  userId       String
+  status       String   @default("registered") // "registered" | "waitlist" | "attended" | "cancelled"
+  registeredAt DateTime @default(now())
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model Place {
+  id          String     @id @default(cuid())
+  communityId String
+  name        String
+  description String?
+  lat         Float?
+  lng         Float?
+  category    String?
+  addedById   String
+  createdAt   DateTime   @default(now())
+  community   Community  @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  addedBy     User       @relation(fields: [addedById], references: [id], onDelete: Cascade)
+  votes       PlaceVote[]
+}
+
+model PlaceVote {
+  id      String @id @default(cuid())
+  placeId String
+  userId  String
+  emoji   String
+  place   Place  @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, userId])
+}
+
+model Review {
+  id          String    @id @default(cuid())
+  communityId String
+  userId      String
+  rating      Int
+  comment     String?
+  createdAt   DateTime  @default(now())
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([communityId, userId])
+}
+
+model ChatMessage {
+  id          String    @id @default(cuid())
+  communityId String
+  authorId    String
+  content     String
+  createdAt   DateTime  @default(now())
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([communityId, createdAt])
+}
+
+model VerificationRequest {
+  id            String    @id @default(cuid())
+  communityId   String
+  message       String
+  link          String?
+  status        String    @default("pending") // "pending" | "approved" | "rejected"
+  requestedById String
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  community     Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  requestedBy   User      @relation("VerificationRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  reviewedBy    User?     @relation("VerificationReviewer", fields: [reviewedById], references: [id])
+
+  @@index([status])
+}
+
+model UserConnection {
+  id           String   @id @default(cuid())
+  userId       String
+  connectionId String
+  createdAt    DateTime @default(now())
+  user         User     @relation("ConnectionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  connection   User     @relation("ConnectionTarget", fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, connectionId])
+}
